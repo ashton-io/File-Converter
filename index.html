@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Morphr — File Converter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #222230;
+    --accent: #e8ff47;
+    --accent2: #47d4ff;
+    --text: #f0f0f8;
+    --muted: #666688;
+    --danger: #ff4f6a;
+    --success: #47ff9a;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Noise grain overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+
+  /* Grid lines */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(232,255,71,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,255,71,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3rem 1.5rem 4rem;
+  }
+
+  header {
+    width: 100%;
+    max-width: 760px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 4rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.5rem;
+    border-radius: 2px;
+    letter-spacing: 0.08em;
+  }
+
+  main {
+    width: 100%;
+    max-width: 760px;
+  }
+
+  h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    margin-bottom: 1rem;
+  }
+
+  h1 em {
+    font-style: normal;
+    color: var(--accent);
+    position: relative;
+    display: inline-block;
+  }
+
+  h1 em::after {
+    content: '';
+    position: absolute;
+    bottom: 4px; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+    opacity: 0.4;
+  }
+
+  .subtitle {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 3rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* Drop Zone */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    overflow: hidden;
+    background: var(--surface);
+    margin-bottom: 2rem;
+  }
+
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(232,255,71,0.03);
+  }
+
+  .dropzone.drag-over { border-style: solid; }
+
+  .dropzone input[type="file"] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer;
+    width: 100%; height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    display: block;
+    filter: grayscale(0.3);
+  }
+
+  .drop-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .drop-sub {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  /* File info */
+  .file-info {
+    display: none;
+    align-items: center;
+    gap: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 2rem;
+  }
+
+  .file-info.visible { display: flex; }
+
+  .file-ext {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 0.3rem 0.5rem;
+    border-radius: 2px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .file-meta { flex: 1; min-width: 0; }
+
+  .file-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-size {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
+  }
+
+  .remove-btn {
+    background: none; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 1.1rem;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+  .remove-btn:hover { color: var(--danger); }
+
+  /* Format selector */
+  .control-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .control-group { flex: 1; min-width: 160px; }
+
+  .control-group label {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+  }
+
+  .control-group select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.7rem 1rem;
+    border-radius: 4px;
+    appearance: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666688' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+  }
+
+  .control-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  /* Convert button */
+  .convert-btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 4px;
+    padding: 0.75rem 2rem;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .convert-btn:hover:not(:disabled) { transform: translateY(-1px); }
+  .convert-btn:active:not(:disabled) { transform: translateY(0); }
+  .convert-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Log / progress */
+  .progress-section {
+    display: none;
+    margin-bottom: 2rem;
+  }
+
+  .progress-section.visible { display: block; }
+
+  .progress-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .progress-bar-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 6px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.3s;
+    border-radius: 2px;
+  }
+
+  .log-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    max-height: 140px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+
+  .log-line { display: block; }
+  .log-line.ok { color: var(--success); }
+  .log-line.err { color: var(--danger); }
+  .log-line.info { color: var(--accent2); }
+
+  /* Download */
+  .download-section {
+    display: none;
+    background: rgba(71,255,154,0.06);
+    border: 1px solid rgba(71,255,154,0.2);
+    border-radius: 4px;
+    padding: 1.5rem;
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .download-section.visible { display: block; }
+
+  .download-section p {
+    font-size: 0.85rem;
+    color: var(--success);
+    margin-bottom: 1rem;
+    font-weight: 600;
+  }
+
+  .download-btn {
+    display: inline-block;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 0.9rem;
+    background: var(--success);
+    color: var(--bg);
+    padding: 0.65rem 1.75rem;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: transform 0.1s;
+  }
+
+  .download-btn:hover { transform: translateY(-1px); }
+
+  /* Format grid */
+  .format-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.5rem;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .format-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 0.3rem 0.5rem;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .format-grid-label {
+    grid-column: 1 / -1;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+  }
+
+  footer {
+    margin-top: 3rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  @media (max-width: 500px) {
+    .control-row { flex-direction: column; }
+    .convert-btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">morph<span>r</span></div>
+    <div class="badge">100% IN-BROWSER · NO UPLOADS</div>
+  </header>
+
+  <main>
+    <h1>Convert any<br>file <em>instantly</em></h1>
+    <p class="subtitle">// Powered by FFmpeg WASM — your files never leave your device</p>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" />
+      <span class="drop-icon">📂</span>
+      <div class="drop-label">Drop a file here or click to browse</div>
+      <div class="drop-sub">video · audio · image · document</div>
+    </div>
+
+    <div class="file-info" id="fileInfo">
+      <span class="file-ext" id="fileExt">MP4</span>
+      <div class="file-meta">
+        <div class="file-name" id="fileName">video.mp4</div>
+        <div class="file-size" id="fileSize">0 MB</div>
+      </div>
+      <button class="remove-btn" id="removeBtn" title="Remove">✕</button>
+    </div>
+
+    <div class="control-row">
+      <div class="control-group">
+        <label>Convert to</label>
+        <select id="formatSelect">
+          <optgroup label="Audio">
+            <option value="mp3">MP3</option>
+            <option value="aac">AAC</option>
+            <option value="wav">WAV</option>
+            <option value="ogg">OGG</option>
+            <option value="flac">FLAC</option>
+            <option value="m4a">M4A</option>
+          </optgroup>
+          <optgroup label="Video">
+            <option value="mp4">MP4</option>
+            <option value="webm">WEBM</option>
+            <option value="mov">MOV</option>
+            <option value="avi">AVI</option>
+            <option value="mkv">MKV</option>
+            <option value="gif">GIF</option>
+          </optgroup>
+          <optgroup label="Image">
+            <option value="jpg">JPG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WEBP</option>
+          </optgroup>
+        </select>
+      </div>
+      <button class="convert-btn" id="convertBtn" disabled>Convert →</button>
+    </div>
+
+    <div class="progress-section" id="progressSection">
+      <div class="progress-label">Processing</div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <div class="download-section" id="downloadSection">
+      <p>✓ Conversion complete!</p>
+      <a class="download-btn" id="downloadBtn" href="#">Download file</a>
+    </div>
+
+    <div class="format-grid">
+      <div class="format-grid-label">Supported formats</div>
+      <div class="format-tag">MP4</div><div class="format-tag">MP3</div>
+      <div class="format-tag">MOV</div><div class="format-tag">WAV</div>
+      <div class="format-tag">AVI</div><div class="format-tag">AAC</div>
+      <div class="format-tag">MKV</div><div class="format-tag">OGG</div>
+      <div class="format-tag">WEBM</div><div class="format-tag">FLAC</div>
+      <div class="format-tag">GIF</div><div class="format-tag">M4A</div>
+      <div class="format-tag">JPG</div><div class="format-tag">PNG</div>
+      <div class="format-tag">WEBP</div>
+    </div>
+  </main>
+
+  <footer>morphr · client-side only · no data stored · open source ready</footer>
+</div>
+
+<!-- FFmpeg WASM (v0.12 — reliable CDN build) -->
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+
+<script>
+const { FFmpeg } = FFmpegWASM;
+const { fetchFile, toBlobURL } = FFmpegUtil;
+
+let ffmpeg = null;
+let selectedFile = null;
+let outputURL = null;
+
+// ── DOM refs ──────────────────────────────────────────────────────
+const dropzone     = document.getElementById('dropzone');
+const fileInput    = document.getElementById('fileInput');
+const fileInfo     = document.getElementById('fileInfo');
+const fileExt      = document.getElementById('fileExt');
+const fileName     = document.getElementById('fileName');
+const fileSize     = document.getElementById('fileSize');
+const removeBtn    = document.getElementById('removeBtn');
+const formatSelect = document.getElementById('formatSelect');
+const convertBtn   = document.getElementById('convertBtn');
+const progressSection = document.getElementById('progressSection');
+const progressBar  = document.getElementById('progressBar');
+const logBox       = document.getElementById('logBox');
+const downloadSection = document.getElementById('downloadSection');
+const downloadBtn  = document.getElementById('downloadBtn');
+
+// ── Drag & drop ───────────────────────────────────────────────────
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) setFile(fileInput.files[0]);
+});
+
+removeBtn.addEventListener('click', () => {
+  selectedFile = null;
+  fileInfo.classList.remove('visible');
+  fileInput.value = '';
+  convertBtn.disabled = true;
+  resetOutput();
+});
+
+function setFile(f) {
+  selectedFile = f;
+  const ext = f.name.split('.').pop().toUpperCase();
+  fileExt.textContent = ext;
+  fileName.textContent = f.name;
+  fileSize.textContent = formatBytes(f.size);
+  fileInfo.classList.add('visible');
+  convertBtn.disabled = false;
+  resetOutput();
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+
+function resetOutput() {
+  progressSection.classList.remove('visible');
+  downloadSection.classList.remove('visible');
+  progressBar.style.width = '0%';
+  logBox.innerHTML = '';
+  if (outputURL) { URL.revokeObjectURL(outputURL); outputURL = null; }
+}
+
+function log(msg, type = '') {
+  const span = document.createElement('span');
+  span.className = 'log-line' + (type ? ' ' + type : '');
+  span.textContent = msg;
+  logBox.appendChild(span);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+// ── FFmpeg init ───────────────────────────────────────────────────
+async function initFFmpeg() {
+  if (ffmpeg) return;
+  log('Loading FFmpeg WASM…', 'info');
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({ message }) => {
+    log(message);
+  });
+  ffmpeg.on('progress', ({ progress }) => {
+    const pct = Math.min(Math.round(progress * 100), 99);
+    progressBar.style.width = pct + '%';
+  });
+
+  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  log('FFmpeg ready.', 'ok');
+}
+
+// ── Conversion ────────────────────────────────────────────────────
+convertBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  resetOutput();
+  progressSection.classList.add('visible');
+  convertBtn.disabled = true;
+
+  try {
+    await initFFmpeg();
+
+    const inName  = 'input.' + selectedFile.name.split('.').pop();
+    const outFmt  = formatSelect.value;
+    const outName = 'output.' + outFmt;
+
+    log(`Writing input file (${formatBytes(selectedFile.size)})…`, 'info');
+    await ffmpeg.writeFile(inName, await fetchFile(selectedFile));
+
+    log(`Converting to ${outFmt.toUpperCase()}…`, 'info');
+
+    // Build args based on target format
+    const args = buildArgs(inName, outName, outFmt);
+    await ffmpeg.exec(args);
+
+    log('Reading output…', 'info');
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data.buffer], { type: getMimeType(outFmt) });
+    outputURL = URL.createObjectURL(blob);
+
+    progressBar.style.width = '100%';
+    log(`Done! Output size: ${formatBytes(blob.size)}`, 'ok');
+
+    const baseName = selectedFile.name.replace(/\.[^.]+$/, '');
+    downloadBtn.href = outputURL;
+    downloadBtn.download = baseName + '.' + outFmt;
+    downloadSection.classList.add('visible');
+
+    // Cleanup
+    await ffmpeg.deleteFile(inName);
+    await ffmpeg.deleteFile(outName);
+  } catch (err) {
+    log('Error: ' + err.message, 'err');
+    progressBar.style.width = '0%';
+  } finally {
+    convertBtn.disabled = false;
+  }
+});
+
+function buildArgs(input, output, fmt) {
+  const base = ['-i', input];
+
+  if (fmt === 'mp3') return [...base, '-vn', '-ar', '44100', '-ac', '2', '-b:a', '192k', output];
+  if (fmt === 'aac') return [...base, '-vn', '-c:a', 'aac', '-b:a', '192k', output];
+  if (fmt === 'wav') return [...base, '-vn', '-ar', '44100', output];
+  if (fmt === 'ogg') return [...base, '-vn', '-c:a', 'libvorbis', '-q:a', '6', output];
+  if (fmt === 'flac') return [...base, '-vn', '-c:a', 'flac', output];
+  if (fmt === 'm4a') return [...base, '-vn', '-c:a', 'aac', '-b:a', '192k', output];
+  if (fmt === 'gif') return [...base, '-vf', 'fps=10,scale=480:-1:flags=lanczos', output];
+  if (fmt === 'jpg' || fmt === 'jpeg') return [...base, '-vframes', '1', '-q:v', '2', output];
+  if (fmt === 'png') return [...base, '-vframes', '1', output];
+  if (fmt === 'webp') return [...base, '-vframes', '1', output];
+  // Default: passthrough with container remux
+  return [...base, '-c', 'copy', output];
+}
+
+function getMimeType(fmt) {
+  const map = {
+    mp3: 'audio/mpeg', aac: 'audio/aac', wav: 'audio/wav',
+    ogg: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+    avi: 'video/x-msvideo', mkv: 'video/x-matroska',
+    gif: 'image/gif', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  };
+  return map[fmt] || 'application/octet-stream';
+}
+</script>
+</body>
+</html>
